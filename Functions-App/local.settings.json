@@ -1,0 +1,14 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "WEBSITE_SLOT_NAME": "Production",
+    "FUNCTIONS_EXTENSION_VERSION": "~3",
+    "ScmType": "None",
+    "AzureWebJobsSecretStorageType": "files",
+    "WEBSITE_AUTH_ENABLED": "False",
+    "APPLICATIONINSIGHTS_CONNECTION_STRING": "InstrumentationKey=350cff2a-5ee4-4c42-85ba-11a93282de6b;IngestionEndpoint=https://uksouth-0.in.applicationinsights.azure.com/",
+    "APPINSIGHTS_INSTRUMENTATIONKEY": "350cff2a-5ee4-4c42-85ba-11a93282de6b",
+    "FUNCTIONS_WORKER_RUNTIME": "powershell",
+    "WEBSITE_SITE_NAME": "aes256cbc-file-encrypt-decrypt-app"
+  }
+}
