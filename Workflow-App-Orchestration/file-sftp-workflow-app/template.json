@@ -1,0 +1,610 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "workflows_file_sftp_workflow_app_name": {
+            "defaultValue": "file-sftp-workflow-app",
+            "type": "String"
+        },
+        "sites_aes256cbc_file_encrypt_decrypt_app_externalid": {
+            "defaultValue": "/subscriptions/6f9a1dc7-fcdc-4943-b059-e2a25cfba5ff/resourceGroups/TEST_GRP/providers/Microsoft.Web/sites/aes256cbc-file-encrypt-decrypt-app",
+            "type": "String"
+        },
+        "connections_azureblob_externalid": {
+            "defaultValue": "/subscriptions/6f9a1dc7-fcdc-4943-b059-e2a25cfba5ff/resourceGroups/TEST_GRP/providers/Microsoft.Web/connections/azureblob",
+            "type": "String"
+        },
+        "connections_keyvault_externalid": {
+            "defaultValue": "/subscriptions/6f9a1dc7-fcdc-4943-b059-e2a25cfba5ff/resourceGroups/TEST_GRP/providers/Microsoft.Web/connections/keyvault",
+            "type": "String"
+        },
+        "connections_office365_externalid": {
+            "defaultValue": "/subscriptions/6f9a1dc7-fcdc-4943-b059-e2a25cfba5ff/resourceGroups/TEST_GRP/providers/Microsoft.Web/connections/office365",
+            "type": "String"
+        },
+        "connections_sftpwithssh_externalid": {
+            "defaultValue": "/subscriptions/6f9a1dc7-fcdc-4943-b059-e2a25cfba5ff/resourceGroups/TEST_GRP/providers/Microsoft.Web/connections/sftpwithssh",
+            "type": "String"
+        }
+    },
+    "variables": {},
+    "resources": [
+        {
+            "type": "Microsoft.Logic/workflows",
+            "apiVersion": "2017-07-01",
+            "name": "[parameters('workflows_file_sftp_workflow_app_name')]",
+            "location": "uksouth",
+            "properties": {
+                "state": "Enabled",
+                "definition": {
+                    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {
+                        "$connections": {
+                            "defaultValue": {},
+                            "type": "Object"
+                        }
+                    },
+                    "triggers": {
+                        "manual": {
+                            "type": "Request",
+                            "kind": "Http",
+                            "inputs": {
+                                "schema": {
+                                    "properties": {
+                                        "Accountname": {
+                                            "type": "string"
+                                        },
+                                        "Filecategory": {
+                                            "type": "string"
+                                        },
+                                        "Folderpath": {
+                                            "type": "string"
+                                        },
+                                        "Landingzone": {
+                                            "type": "string"
+                                        },
+                                        "Manifestfilename": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "actions": {
+                        "Business_Scope": {
+                            "actions": {
+                                "For_each": {
+                                    "foreach": "@body('List_Files_from_Azure_Data_Lake_Store_Gen1')?['FileStatuses']?['FileStatus']",
+                                    "actions": {
+                                        "Condition": {
+                                            "actions": {
+                                                "Append_Manifest_File_-_Landing_Zone": {
+                                                    "runAfter": {
+                                                        "Append_Manifest_File_-_MFT_Zone": [
+                                                            "Succeeded"
+                                                        ]
+                                                    },
+                                                    "type": "ApiConnection",
+                                                    "inputs": {
+                                                        "body": "@{concat(replace(items('For_each')?['pathSuffix'],concat('.',last(split(items('For_each')?['pathSuffix'], '.'))),''),'.aes')}\n",
+                                                        "host": {
+                                                            "connection": {
+                                                                "name": "@parameters('$connections')['azuredatalake']['connectionId']"
+                                                            }
+                                                        },
+                                                        "method": "post",
+                                                        "path": "/webhdfsext/@{encodeURIComponent(triggerBody()?['Landingzone'],'/',triggerBody()?['Manifestfilename'])}",
+                                                        "queries": {
+                                                            "account": "@triggerBody()?['Accountname']",
+                                                            "appendMode": "autocreate",
+                                                            "op": "concurrentappend"
+                                                        },
+                                                        "retryPolicy": {
+                                                            "count": 5,
+                                                            "interval": "PT1M",
+                                                            "type": "fixed"
+                                                        }
+                                                    }
+                                                },
+                                                "Append_Manifest_File_-_MFT_Zone": {
+                                                    "runAfter": {
+                                                        "Delete_File_from_Data_Lake_Store_Gen1": [
+                                                            "Succeeded"
+                                                        ]
+                                                    },
+                                                    "type": "ApiConnection",
+                                                    "inputs": {
+                                                        "body": "@{concat(replace(items('For_each')?['pathSuffix'],concat('.',last(split(items('For_each')?['pathSuffix'], '.'))),''),'.aes')}\n",
+                                                        "host": {
+                                                            "connection": {
+                                                                "name": "@parameters('$connections')['azuredatalake']['connectionId']"
+                                                            }
+                                                        },
+                                                        "method": "post",
+                                                        "path": "/webhdfsext/@{encodeURIComponent(triggerBody()?['Folderpath'],'/',triggerBody()?['Manifestfilename'])}",
+                                                        "queries": {
+                                                            "account": "@triggerBody()?['Accountname']",
+                                                            "appendMode": "autocreate",
+                                                            "op": "concurrentappend"
+                                                        },
+                                                        "retryPolicy": {
+                                                            "count": 5,
+                                                            "interval": "PT1M",
+                                                            "type": "fixed"
+                                                        }
+                                                    }
+                                                },
+                                                "Compose": {
+                                                    "runAfter": {
+                                                        "Read_File_from_Azure_Data_Lake_Store_Gen1": [
+                                                            "Succeeded"
+                                                        ]
+                                                    },
+                                                    "type": "Compose",
+                                                    "inputs": "@base64ToString(body('Read_file_from_Azure_Data_Lake_Store_Gen1').$content)",
+                                                    "runtimeConfiguration": {
+                                                        "secureData": {
+                                                            "properties": [
+                                                                "inputs"
+                                                            ]
+                                                        }
+                                                    }
+                                                },
+                                                "Delete_File_from_Data_Lake_Store_Gen1": {
+                                                    "runAfter": {
+                                                        "Transfer_Encrypted_File_to_TEST_SFTP_Server": [
+                                                            "Succeeded"
+                                                        ]
+                                                    },
+                                                    "type": "ApiConnection",
+                                                    "inputs": {
+                                                        "host": {
+                                                            "connection": {
+                                                                "name": "@parameters('$connections')['azuredatalake']['connectionId']"
+                                                            }
+                                                        },
+                                                        "method": "delete",
+                                                        "path": "/webhdfs/v1/@{encodeURIComponent(triggerBody()?['Folderpath'],'/',items('For_each')?['pathSuffix'])}",
+                                                        "queries": {
+                                                            "account": "@triggerBody()?['Accountname']",
+                                                            "op": "DELETE"
+                                                        },
+                                                        "retryPolicy": {
+                                                            "count": 5,
+                                                            "interval": "PT1M",
+                                                            "type": "fixed"
+                                                        }
+                                                    }
+                                                },
+                                                "Read_File_from_Azure_Data_Lake_Store_Gen1": {
+                                                    "runAfter": {},
+                                                    "type": "ApiConnection",
+                                                    "inputs": {
+                                                        "host": {
+                                                            "connection": {
+                                                                "name": "@parameters('$connections')['azuredatalake']['connectionId']"
+                                                            }
+                                                        },
+                                                        "method": "get",
+                                                        "path": "/webhdfs/v1/@{encodeURIComponent(triggerBody()?['Folderpath'],'/',items('For_each')?['pathSuffix'])}",
+                                                        "queries": {
+                                                            "account": "@triggerBody()?['Accountname']",
+                                                            "op": "OPEN",
+                                                            "read": "true"
+                                                        },
+                                                        "retryPolicy": {
+                                                            "count": 5,
+                                                            "interval": "PT1M",
+                                                            "type": "fixed"
+                                                        }
+                                                    }
+                                                },
+                                                "Transfer_Encrypted_File_to_TEST_SFTP_Server": {
+                                                    "runAfter": {
+                                                        "Upload_File_to_Data_Lake_Store_Gen1_-_Landing_Zone": [
+                                                            "Succeeded"
+                                                        ]
+                                                    },
+                                                    "type": "ApiConnection",
+                                                    "inputs": {
+                                                        "body": "@body('encrypt-file-content')",
+                                                        "host": {
+                                                            "connection": {
+                                                                "name": "@parameters('$connections')['sftpwithssh_1']['connectionId']"
+                                                            }
+                                                        },
+                                                        "method": "post",
+                                                        "path": "/datasets/default/files",
+                                                        "queries": {
+                                                            "folderPath": "/path",
+                                                            "name": "@{concat(replace(items('For_each')?['pathSuffix'],concat('.',last(split(items('For_each')?['pathSuffix'], '.'))),''),'.aes')}",
+                                                            "queryParametersSingleEncoded": true
+                                                        },
+                                                        "retryPolicy": {
+                                                            "count": 5,
+                                                            "interval": "PT5M",
+                                                            "type": "fixed"
+                                                        }
+                                                    },
+                                                    "runtimeConfiguration": {
+                                                        "contentTransfer": {
+                                                            "transferMode": "Chunked"
+                                                        }
+                                                    }
+                                                },
+                                                "Upload_File_to_Data_Lake_Store_Gen1_-_Landing_Zone": {
+                                                    "runAfter": {
+                                                        "Upload_File_to_Data_Lake_Store_Gen1_-_MFT_Zone": [
+                                                            "Succeeded"
+                                                        ]
+                                                    },
+                                                    "type": "ApiConnection",
+                                                    "inputs": {
+                                                        "body": "@body('encrypt-file-content')",
+                                                        "host": {
+                                                            "connection": {
+                                                                "name": "@parameters('$connections')['azuredatalake']['connectionId']"
+                                                            }
+                                                        },
+                                                        "method": "put",
+                                                        "path": "/webhdfs/v1/@{encodeURIComponent(triggerBody()?['Landingzone'],'/',concat(replace(items('For_each')?['pathSuffix'],concat('.',last(split(items('For_each')?['pathSuffix'], '.'))),''),'.aes'))}",
+                                                        "queries": {
+                                                            "account": "@triggerBody()?['Accountname']",
+                                                            "op": "CREATE",
+                                                            "overwrite": true,
+                                                            "write": "true"
+                                                        },
+                                                        "retryPolicy": {
+                                                            "count": 5,
+                                                            "interval": "PT1M",
+                                                            "type": "fixed"
+                                                        }
+                                                    },
+                                                    "runtimeConfiguration": {
+                                                        "contentTransfer": {
+                                                            "transferMode": "Chunked"
+                                                        }
+                                                    }
+                                                },
+                                                "Upload_File_to_Data_Lake_Store_Gen1_-_MFT_Zone": {
+                                                    "runAfter": {
+                                                        "encrypt-file-content": [
+                                                            "Succeeded"
+                                                        ]
+                                                    },
+                                                    "type": "ApiConnection",
+                                                    "inputs": {
+                                                        "body": "@body('encrypt-file-content')",
+                                                        "host": {
+                                                            "connection": {
+                                                                "name": "@parameters('$connections')['azuredatalake']['connectionId']"
+                                                            }
+                                                        },
+                                                        "method": "put",
+                                                        "path": "/webhdfs/v1/@{encodeURIComponent(triggerBody()?['Folderpath'],'/',concat(replace(items('For_each')?['pathSuffix'],concat('.',last(split(items('For_each')?['pathSuffix'], '.'))),''),'.aes'))}",
+                                                        "queries": {
+                                                            "account": "@triggerBody()?['Accountname']",
+                                                            "op": "CREATE",
+                                                            "overwrite": true,
+                                                            "write": "true"
+                                                        },
+                                                        "retryPolicy": {
+                                                            "count": 5,
+                                                            "interval": "PT1M",
+                                                            "type": "fixed"
+                                                        }
+                                                    },
+                                                    "runtimeConfiguration": {
+                                                        "contentTransfer": {
+                                                            "transferMode": "Chunked"
+                                                        }
+                                                    }
+                                                },
+                                                "encrypt-file-content": {
+                                                    "runAfter": {
+                                                        "Compose": [
+                                                            "Succeeded"
+                                                        ]
+                                                    },
+                                                    "type": "Function",
+                                                    "inputs": {
+                                                        "body": {
+                                                            "FilePath": "@outputs('Compose')",
+                                                            "Key": "@body('Get_Secret_from_Azure_Key_Vault')?['value']"
+                                                        },
+                                                        "function": {
+                                                            "id": "[concat(parameters('sites_aes256cbc_file_encrypt_decrypt_app_externalid'), '/functions/encrypt-file-content')]"
+                                                        },
+                                                        "retryPolicy": {
+                                                            "count": 5,
+                                                            "interval": "PT1M",
+                                                            "type": "fixed"
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            "runAfter": {},
+                                            "else": {
+                                                "actions": {
+                                                    "Display_File_Name": {
+                                                        "runAfter": {},
+                                                        "type": "Compose",
+                                                        "inputs": "@{items('For_each')?['pathSuffix']} is not a \".csv\" file. "
+                                                    }
+                                                }
+                                            },
+                                            "expression": {
+                                                "and": [
+                                                    {
+                                                        "contains": [
+                                                            "@items('For_each')?['pathSuffix']",
+                                                            ".csv"
+                                                        ]
+                                                    }
+                                                ]
+                                            },
+                                            "type": "If"
+                                        }
+                                    },
+                                    "runAfter": {
+                                        "List_Files_from_Azure_Data_Lake_Store_Gen1": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    "type": "Foreach",
+                                    "runtimeConfiguration": {
+                                        "concurrency": {
+                                            "repetitions": 1
+                                        }
+                                    }
+                                },
+                                "Get_Secret_from_Azure_Key_Vault": {
+                                    "runAfter": {},
+                                    "type": "ApiConnection",
+                                    "inputs": {
+                                        "host": {
+                                            "connection": {
+                                                "name": "@parameters('$connections')['keyvault_1']['connectionId']"
+                                            }
+                                        },
+                                        "method": "get",
+                                        "path": "/secrets/@{encodeURIComponent('file-encrypt-secret')}/value",
+                                        "retryPolicy": {
+                                            "count": 5,
+                                            "interval": "PT1M",
+                                            "type": "fixed"
+                                        }
+                                    }
+                                },
+                                "List_Files_from_Azure_Data_Lake_Store_Gen1": {
+                                    "runAfter": {
+                                        "Get_Secret_from_Azure_Key_Vault": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    "type": "ApiConnection",
+                                    "inputs": {
+                                        "host": {
+                                            "connection": {
+                                                "name": "@parameters('$connections')['azuredatalake']['connectionId']"
+                                            }
+                                        },
+                                        "method": "get",
+                                        "path": "/store/folders/webhdfs/v1/",
+                                        "queries": {
+                                            "account": "@triggerBody()?['Accountname']",
+                                            "op": "LISTSTATUS",
+                                            "path": "@triggerBody()?['Folderpath']"
+                                        },
+                                        "retryPolicy": {
+                                            "count": 5,
+                                            "interval": "PT1M",
+                                            "type": "fixed"
+                                        }
+                                    }
+                                },
+                                "Read_Manifest_File_from_Azure_Data_Lake_Store_Gen1": {
+                                    "runAfter": {
+                                        "For_each": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    "type": "ApiConnection",
+                                    "inputs": {
+                                        "host": {
+                                            "connection": {
+                                                "name": "@parameters('$connections')['azuredatalake']['connectionId']"
+                                            }
+                                        },
+                                        "method": "get",
+                                        "path": "/webhdfs/v1/@{encodeURIComponent(triggerBody()?['Folderpath'],'/',triggerBody()?['Manifestfilename'])}",
+                                        "queries": {
+                                            "account": "@triggerBody()?['Accountname']",
+                                            "op": "OPEN",
+                                            "read": "true"
+                                        },
+                                        "retryPolicy": {
+                                            "count": 5,
+                                            "interval": "PT1M",
+                                            "type": "fixed"
+                                        }
+                                    }
+                                },
+                                "Send_an_email_on_successful_file_transfer": {
+                                    "runAfter": {
+                                        "Transfer_Manifest_File_to_TEST_SFTP_Server": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    "type": "ApiConnection",
+                                    "inputs": {
+                                        "body": {
+                                            "Body": "<p>Hi,<br>\n<br>\nFile transfer has completed successfully.<br>\n<br>\nFile Category: @{triggerBody()?['Filecategory']}<br>\n<br>\nLogic App Run Identifier: @{workflow()['run']['name']}<br>\n<br>\nRegards,<br>\nTeam</p>",
+                                            "Importance": "Normal",
+                                            "Subject": "File transfer completed successfully",
+                                            "To": "emailaddress"
+                                        },
+                                        "host": {
+                                            "connection": {
+                                                "name": "@parameters('$connections')['office365']['connectionId']"
+                                            }
+                                        },
+                                        "method": "post",
+                                        "path": "/v2/Mail",
+                                        "retryPolicy": {
+                                            "count": 5,
+                                            "interval": "PT1M",
+                                            "type": "fixed"
+                                        }
+                                    }
+                                },
+                                "Transfer_Manifest_File_to_TEST_SFTP_Server": {
+                                    "runAfter": {
+                                        "Read_Manifest_File_from_Azure_Data_Lake_Store_Gen1": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    "type": "ApiConnection",
+                                    "inputs": {
+                                        "body": "@body('Read_Manifest_File_from_Azure_Data_Lake_Store_Gen1')",
+                                        "host": {
+                                            "connection": {
+                                                "name": "@parameters('$connections')['sftpwithssh_1']['connectionId']"
+                                            }
+                                        },
+                                        "method": "post",
+                                        "path": "/datasets/default/files",
+                                        "queries": {
+                                            "folderPath": "/path",
+                                            "name": "@triggerBody()?['Manifestfilename']",
+                                            "queryParametersSingleEncoded": true
+                                        },
+                                        "retryPolicy": {
+                                            "count": 5,
+                                            "interval": "PT5M",
+                                            "type": "fixed"
+                                        }
+                                    },
+                                    "runtimeConfiguration": {
+                                        "contentTransfer": {
+                                            "transferMode": "Chunked"
+                                        }
+                                    }
+                                }
+                            },
+                            "runAfter": {
+                                "Initialize_error_variable": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "Scope"
+                        },
+                        "Global_Error_Scope": {
+                            "actions": {
+                                "Apply_to_each_result": {
+                                    "foreach": "@body('Filter_array')",
+                                    "actions": {
+                                        "Append_to_string_variable": {
+                                            "runAfter": {},
+                                            "type": "AppendToStringVariable",
+                                            "inputs": {
+                                                "name": "ErrorDetails",
+                                                "value": "<br>Process Stage: @{items('Apply_to_each_result')['name']}<br>\nStatus: @{items('Apply_to_each_result')['status']}<br>\nCode: @{items('Apply_to_each_result')['code']}<br>"
+                                            }
+                                        }
+                                    },
+                                    "runAfter": {
+                                        "Filter_array": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    "type": "Foreach"
+                                },
+                                "Filter_array": {
+                                    "runAfter": {},
+                                    "type": "Query",
+                                    "inputs": {
+                                        "from": "@result('Business_Scope')",
+                                        "where": "@equals(1, 1)"
+                                    }
+                                },
+                                "Send_an_email_on_failure_of_file_transfer": {
+                                    "runAfter": {
+                                        "Apply_to_each_result": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    "type": "ApiConnection",
+                                    "inputs": {
+                                        "body": {
+                                            "Body": "<p>Hi,<br>\n<br>\n<span style=\"color: rgb(226,80,65)\">File transfer has failed for one of the below reason.</span><br>\n<br>\nFile Category: @{triggerBody()?['Filecategory']}<br>\n<br>\nLogic Apps Run Identifier: @{workflow()['run']['name']}<br>\n@{variables('ErrorDetails')}<br>\nNavigation: Azure Portal -&gt; Home -&gt; Logic Apps -&gt;file-stfp-workflow-app -&gt; Runs history -&gt;Enter the run identifier to open the monitor view directly -&gt; Click on enter.<br>\n<br>\nCheck the logic app instance using the above Run Identifier and the navigation for complete detail on error.<br>\n<br>\nRegards,<br>\nTeam</p>",
+                                            "Importance": "High",
+                                            "Subject": "file transfer has failed",
+                                            "To": "EMAILADDRESS"
+                                        },
+                                        "host": {
+                                            "connection": {
+                                                "name": "@parameters('$connections')['office365']['connectionId']"
+                                            }
+                                        },
+                                        "method": "post",
+                                        "path": "/v2/Mail"
+                                    }
+                                }
+                            },
+                            "runAfter": {
+                                "Business_Scope": [
+                                    "Failed",
+                                    "TimedOut"
+                                ]
+                            },
+                            "type": "Scope"
+                        },
+                        "Initialize_error_variable": {
+                            "runAfter": {},
+                            "type": "InitializeVariable",
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "ErrorDetails",
+                                        "type": "string"
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "outputs": {}
+                },
+                "parameters": {
+                    "$connections": {
+                        "value": {
+                            "azuredatalake": {
+                                "connectionId": "[parameters('connections_azureblob_externalid')]",
+                                "connectionName": "azureblob",
+                                "id": "/subscriptions/6f9a1dc7-fcdc-4943-b059-e2a25cfba5ff/providers/Microsoft.Web/locations/uksouth/managedApis/azuredatalake"
+                            },
+                            "keyvault_1": {
+                                "connectionId": "[parameters('connections_keyvault_externalid')]",
+                                "connectionName": "keyvault",
+                                "id": "/subscriptions/6f9a1dc7-fcdc-4943-b059-e2a25cfba5ff/providers/Microsoft.Web/locations/uksouth/managedApis/keyvault"
+                            },
+                            "office365": {
+                                "connectionId": "[parameters('connections_office365_externalid')]",
+                                "connectionName": "office365",
+                                "id": "/subscriptions/6f9a1dc7-fcdc-4943-b059-e2a25cfba5ff/providers/Microsoft.Web/locations/uksouth/managedApis/office365"
+                            },
+                            "sftpwithssh_1": {
+                                "connectionId": "[parameters('connections_sftpwithssh_externalid')]",
+                                "connectionName": "sftpwithssh",
+                                "id": "/subscriptions/6f9a1dc7-fcdc-4943-b059-e2a25cfba5ff/providers/Microsoft.Web/locations/uksouth/managedApis/sftpwithssh"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ]
+}
